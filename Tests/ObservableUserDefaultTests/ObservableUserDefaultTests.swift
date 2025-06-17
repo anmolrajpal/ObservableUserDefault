@@ -144,6 +144,72 @@ final class ObservableUserDefaultTests: XCTestCase {
        #endif
    }
    
+   func testObservableUserDefaultWithRandomStaticStore() throws {
+       #if canImport(ObservableUserDefaultMacros)
+       assertMacroExpansion(
+           #"""
+           @Observable
+           class AppData {
+               nonisolated(unsafe) static var store: UserDefaults = UserDefaults(suiteName: "preview")!
+               @ObservableUserDefault(store: store) 
+               @ObservationIgnored 
+               var phone: String = "1234567890"
+           }
+           fileprivate extension UserDefaults {
+               static func random() -> UserDefaults {
+                   UserDefaults(suiteName: .uuid())!
+               }
+           }
+           extension String {
+               static func uuid() -> String {
+                   UUID().uuidString
+               }
+           }
+           """#,
+           expandedSource:
+           #"""
+           @Observable
+           class AppData {
+               nonisolated(unsafe) static var store: UserDefaults = UserDefaults(suiteName: "preview")!
+               
+               @ObservationIgnored
+               var phone: String {
+                   get {
+                       access(keyPath: \.phone)
+                       if let data = Self.store.data(forKey: "phone"),
+                           let decoded = try? JSONDecoder().decode(String.self, from: data) {
+                           return decoded
+                       } else {
+                           return "1234567890"
+                       }
+                   }
+                   set {
+                       withMutation(keyPath: \.phone) {
+                           if let data = try? JSONEncoder().encode(newValue) {
+                               Self.store.set(data, forKey: "phone")
+                           }
+                       }
+                   }
+               }
+           }
+           fileprivate extension UserDefaults {
+               static func random() -> UserDefaults {
+                   UserDefaults(suiteName: .uuid())!
+               }
+           }
+           extension String {
+               static func uuid() -> String {
+                   UUID().uuidString
+               }
+           }
+           """#,
+           macros: testMacros
+       )
+       #else
+       throw XCTSkip("macros are only supported when running tests for the host platform")
+       #endif
+   }
+   
    func testObservableUserDefaultNonOptionalDefaultValue() throws {
        #if canImport(ObservableUserDefaultMacros)
        assertMacroExpansion(

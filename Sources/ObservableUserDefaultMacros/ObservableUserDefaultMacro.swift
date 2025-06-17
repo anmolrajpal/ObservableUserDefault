@@ -213,22 +213,67 @@ public struct ObservableUserDefaultMacro: AccessorMacro {
        
        
        // Default to standard UserDefaults (future versions may support custom stores)
-       var store = ExprSyntax(stringLiteral: "UserDefaults.standard")
+//       var store = ExprSyntax(stringLiteral: "UserDefaults.standard")
        
+       func extractStoreExpr(from attribute: AttributeSyntax) -> ExprSyntax {
+          
+          guard let arguments = attribute.arguments?.as(LabeledExprListSyntax.self) else {
+             return "UserDefaults.standard" // fallback if no arguments provided
+          }
+          
+          for arg in arguments {
+             if arg.label?.text == "store" {
+                return arg.expression
+             }
+          }
+          
+          return "UserDefaults.standard"
+       }
+       
+       func resolveStoreExpr(_ expr: ExprSyntax) -> ExprSyntax {
+          
+          if let declRef = expr.as(DeclReferenceExprSyntax.self) {
+             // Simple identifier like `store`
+             return "Self.\(raw: declRef.baseName.text)"
+          } else if let member = expr.as(MemberAccessExprSyntax.self) {
+             // Unqualified member like `.shared` or `.standard`
+             if member.base == nil {
+                // We assume UserDefaults unless user specifies otherwise
+                return "UserDefaults.\(raw: member.declName.baseName.text)"
+             } else {
+                // Already has base, e.g. `Something.shared`
+                return expr
+             }
+          } else {
+             // Function calls or complex expressions (e.g., UserDefaults(suiteName: ...))
+             return expr
+          }
+//          
+//          if let declRef = expr.as(DeclReferenceExprSyntax.self) {
+//             // Unqualified identifier like `store`
+//             return "Self.\(raw: declRef.baseName.text)"
+//          } else {
+//             // Return full expression as-is
+//             return expr
+//          }
+       }
+       
+       let rawStoreExpr = extractStoreExpr(from: node)
+       let storeExpr = resolveStoreExpr(rawStoreExpr)
+       let store = storeExpr
+       
+       /*
        if let arguments = node.arguments {
+          // Not using this block currently
           guard let exprList = arguments.as(LabeledExprListSyntax.self), exprList.count == 1 else {
              throw ObservableUserDefaultArgumentError.macroShouldOnlyContainOneArgument
           }
           
-          func storeExprDeclName() -> DeclReferenceExprSyntax? {
-             exprList.first(where: { $0.label?.text == "store" })?.expression.as(MemberAccessExprSyntax.self)?.declName
-          }
-
-          if let storeExpr = storeExprDeclName() {
-             store = ExprSyntax(stringLiteral: "UserDefaults.\(storeExpr)")
+          func storeExpr() -> ExprSyntax? {
+             exprList.first(where: { $0.label?.text == "store" })?.expression
           }
        }
-               
+        */
        
        // Check if a default initializer exists (for non-optional types)
        let defaultExpr = binding.initializer?.value
